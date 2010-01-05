@@ -13,7 +13,10 @@ class SimpleProxy < Mongrel::HttpHandler
 
   def process(request, response)
     params = request.params
-    res = fetch(params['REQUEST_URI'])
+    case params['REQUEST_METHOD']
+      when "GET" then res = fetch(params['REQUEST_URI'])
+      when "POST" then res = post(params['REQUEST_URI'], post_data(request))
+    end
 
     response.start(200) do |header, out|
       # Set the content type based on the HTTP_ACCEPT parameter
@@ -49,6 +52,34 @@ class SimpleProxy < Mongrel::HttpHandler
 
       # Technically this should case response for errors
     end
+  end
+
+  def post(uri, post_data, limit = 10)
+    response = Net::HTTP.post_form(URI.parse(uri), post_data)
+
+    case response
+      when Net::HTTPSuccess then response
+      when Net::HTTPRedirection then post(response['location'], limit - 1)
+      when Net::HTTPUnauthorized then post_authorized(uri, post_data)
+    end
+  end
+
+  def post_authorized(uri, post_data)
+    url = URI.parse(uri)
+    login = @credentials[url.host]
+
+    unless login.nil?
+      req = Net::HTTP::Post.new(url.path)
+      req.basic_auth login['user'], login['pass']
+      req.set_form_data(post_data)
+      res = Net::HTTP.new(url.host, url.port).start { |http|
+        http.request(req)
+      }
+    end
+  end
+
+  def post_data(request)
+    Mongrel::HttpRequest.query_parse(request.body.readlines.first)
   end
 end
 
