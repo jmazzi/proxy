@@ -13,73 +13,68 @@ class SimpleProxy < Mongrel::HttpHandler
 
   def process(request, response)
     params = request.params
-    case params['REQUEST_METHOD']
-      when "GET" then res = fetch(params['REQUEST_URI'])
-      when "POST" then res = post(params['REQUEST_URI'], post_data(request))
-    end
+    res = fetch(params['REQUEST_URI'], params['REQUEST_METHOD'], post_data(request))
 
     response.start(200) do |header, out|
-      # Set the content type based on the HTTP_ACCEPT parameter
       header['Content-Type'] = params['HTTP_ACCEPT'].split(',').first
       out << res.body
     end
   end
 
   private
-  def fetch(uri, limit = 10)
-    response = Net::HTTP.get_response(URI.parse(uri))
-
-    case response
-      when Net::HTTPSuccess then response
-      when Net::HTTPRedirection then fetch(response['location'], limit - 1)
-      when Net::HTTPUnauthorized then fetch_authorized(uri)
-    else
-      response.error!
-    end
-  end
-
-  def fetch_authorized(uri)
+  def fetch(uri, request_method, post_data, limit = 10)
     url = URI.parse(uri)
-    login = @credentials[url.host]
+    login = get_credentials(url.host)
 
     unless login.nil?
-    # This will change later, when posts are supported
-      req = Net::HTTP::Get.new(url.path, {"User-Agent" => "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/525.13 (KHTML, like Gecko) Chrome/0.A.B.C Safari/525.13"})
+      req = build_request_class(request_method, url.path, post_data)
       req.basic_auth login['user'], login['pass']
       response = Net::HTTP.start(url.host, url.port) { |http|
         http.request(req)
       }
-
-      # Technically this should case response for errors
+    else
+      response = get_response(request_method, url, post_data)
     end
-  end
-
-  def post(uri, post_data, limit = 10)
-    response = Net::HTTP.post_form(URI.parse(uri), post_data)
 
     case response
       when Net::HTTPSuccess then response
-      when Net::HTTPRedirection then post(response['location'], limit - 1)
-      when Net::HTTPUnauthorized then post_authorized(uri, post_data)
+      when Net::HTTPRedirection then return fetch(response['location'], request_method, post_data, limit - 1)
+      when Net::HTTPUnauthorized then puts "UNAUTHORIZED"
+    else
+      response.error!
     end
+
+    response
   end
 
-  def post_authorized(uri, post_data)
-    url = URI.parse(uri)
-    login = @credentials[url.host]
-
-    unless login.nil?
-      req = Net::HTTP::Post.new(url.path)
-      req.basic_auth login['user'], login['pass']
-      req.set_form_data(post_data)
-      res = Net::HTTP.new(url.host, url.port).start { |http|
-        http.request(req)
-      }
+  def get_credentials(host)
+    @credentials.each do |domain, login|
+      return login if host.match(domain)
     end
+
+    nil
   end
 
   def post_data(request)
     Mongrel::HttpRequest.query_parse(request.body.readlines.first)
+  end
+
+  def get_response(request_method, url, post_data)
+    case request_method
+      when "GET" then Net::HTTP.get_response(url)
+      when "POST" then Net::HTTP.post_form(url, post_data)
+    end
+  end
+
+  def build_request_class(request_method, url, post_data)
+    case request_method
+      when "POST" then
+        req = Net::HTTP::Post.new(url)
+        req.set_form_data(post_data)
+      when "GET" then req = Net::HTTP::Get.new(url)
+    end
+
+    req
   end
 end
 
