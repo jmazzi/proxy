@@ -17,8 +17,15 @@ class SimpleProxy < Mongrel::HttpHandler
   end
 
   private
-  def fetch(uri)
+  def fetch(uri, limit = 10)
     response = Net::HTTP.get_response(URI.parse(uri))
+
+    case response
+      when Net::HTTPSuccess then response
+      when Net::HTTPRedirection then fetch(response['location'], limit - 1)
+    else
+      response.error!
+    end
   end
 
   
