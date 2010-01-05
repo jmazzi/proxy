@@ -26,20 +26,15 @@ class SimpleProxy < Mongrel::HttpHandler
     url = URI.parse(uri)
     login = get_credentials(url.host)
 
-    unless login.nil?
-      req = build_request_class(request_method, url.path, post_data)
-      req.basic_auth login['user'], login['pass']
-      response = Net::HTTP.start(url.host, url.port) { |http|
-        http.request(req)
-      }
-    else
+    if login.nil?
       response = get_response(request_method, url, post_data)
+    else
+      response = get_auth_response(request_method, url, post_data, login)
     end
 
     case response
       when Net::HTTPSuccess then response
       when Net::HTTPRedirection then return fetch(response['location'], request_method, post_data, limit - 1)
-      when Net::HTTPUnauthorized then puts "UNAUTHORIZED"
     else
       response.error!
     end
@@ -48,6 +43,7 @@ class SimpleProxy < Mongrel::HttpHandler
   end
 
   def get_credentials(host)
+    # This was originally just a lookup into the hash but ran into issues with subdomains
     @credentials.each do |domain, login|
       return login if host.match(domain)
     end
@@ -66,6 +62,14 @@ class SimpleProxy < Mongrel::HttpHandler
     end
   end
 
+  def get_auth_response(request_method, url, post_data, login)
+    req = build_request_class(request_method, url.path, post_data)
+    req.basic_auth login['user'], login['pass']
+    response = Net::HTTP.start(url.host, url.port) { |http|
+      http.request(req)
+    }
+  end
+
   def build_request_class(request_method, url, post_data)
     case request_method
       when "POST" then
@@ -82,4 +86,3 @@ end
 proxy_server = Mongrel::HttpServer.new("localhost", "3001")
 proxy_server.register("/", SimpleProxy.new)
 proxy_server.run.join
-
