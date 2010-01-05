@@ -17,13 +17,15 @@ class SimpleProxy < Mongrel::HttpHandler
 
     response.start(200) do |header, out|
       header['Content-Type'] = params['HTTP_ACCEPT'].split(',').first
-      out << res.body
+      out << res.body unless res.nil?
     end
   end
 
   private
   def fetch(uri, request_method, post_data, limit = 10)
     url = URI.parse(uri)
+    return nil if url.host.nil?
+
     login = get_credentials(url.host)
 
     if login.nil?
@@ -35,12 +37,9 @@ class SimpleProxy < Mongrel::HttpHandler
     case response
       when Net::HTTPSuccess then response
       when Net::HTTPRedirection then return fetch(response['location'], request_method, post_data, limit - 1)
-    else
-      # Use the server error pages for now
-      #response.error!
+      else
+        return nil
     end
-
-    response
   end
 
   def get_credentials(host)
