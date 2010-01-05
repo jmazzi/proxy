@@ -36,7 +36,8 @@ class SimpleProxy < Mongrel::HttpHandler
       when Net::HTTPSuccess then response
       when Net::HTTPRedirection then return fetch(response['location'], request_method, post_data, limit - 1)
     else
-      response.error!
+      # Use the server error pages for now
+      #response.error!
     end
 
     response
@@ -72,10 +73,10 @@ class SimpleProxy < Mongrel::HttpHandler
 
   def build_request_class(request_method, url, post_data)
     case request_method
+      when "GET" then req = Net::HTTP::Get.new(url)
       when "POST" then
         req = Net::HTTP::Post.new(url)
         req.set_form_data(post_data)
-      when "GET" then req = Net::HTTP::Get.new(url)
     end
 
     req
