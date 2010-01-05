@@ -38,7 +38,7 @@ class SimpleProxy < Mongrel::HttpHandler
       when Net::HTTPSuccess then response
       when Net::HTTPRedirection then return fetch(response['location'], request_method, post_data, limit - 1)
       else
-        return nil
+        response
     end
   end
 
