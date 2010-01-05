@@ -8,10 +8,12 @@ require 'net/http'
 # with basic authentication
 class SimpleProxy < Mongrel::HttpHandler
   def process(request, response)
-    res = fetch(request.params['REQUEST_URI'])
+    params = request.params
+    res = fetch(params['REQUEST_URI'])
 
     response.start(200) do |header, out|
-      header['Content-Type'] = "text/html"
+      # Set the content type based on the HTTP_ACCEPT parameter
+      header['Content-Type'] = params['HTTP_ACCEPT'].split(',').first
       out << res.body
     end
   end
@@ -27,8 +29,6 @@ class SimpleProxy < Mongrel::HttpHandler
       response.error!
     end
   end
-
-  
 end
 
 # Create and start the proxy server
